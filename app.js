@@ -158,14 +158,27 @@ const TOOLS = [
       const r = shrinkage(cal ? { welds: v.N, measuredTotal: v.mt, measuredWelds: v.mw } : { welds: v.N, perWeld: v.ps }); return { cards: [card('Na jedną spoinę', r.perWeld.toFixed(2) + ' mm'), card('Skurcz razem', r.total.toFixed(1) + ' mm')], note: cal ? 'Użyto Twojej kalibracji.' : 'Wartość 1,5 mm to tylko punkt startowy. Zmierz i wpisz własną w polach kalibracji.' }; } },
   { id: 'cale', cat: 'Pomiary i konwersje', name: 'Cale ↔ mm', desc: 'Konwerter, rozumie 4\' 7 5/16".', special: 'cale' },
   { id: 'poziomica', cat: 'Pomiary i konwersje', name: 'Poziomica (czujnik telefonu)', desc: 'Przyłóż telefon do rury i odczytaj spadek.', special: 'poziomica' },
+  { id: 'normy', cat: 'Normy i źródła', name: 'Normy powiązane z aplikacją', desc: 'Tylko normy potwierdzone w katalogach, z linkami.', special: 'normy' },
   { id: 'iso', cat: 'Izometria', name: 'Edytor izometrii', desc: 'Rysuj trasę kierunek + długość, lista cięć i dziennik spoin.', special: 'iso' }
 ];
-const CATS = ['Kolana i przesunięcia', 'Blachy i rozwinięcia', 'Odgałęzienia', 'Przepływ i obciążenia', 'Spawanie', 'Pomiary i konwersje', 'Izometria'];
+
+// ---------- normy (tylko te, których numer i status potwierdziłem w katalogach; treści norm NIE sprawdzałem) ----------
+const NORMY = [
+  { nr: 'PN-EN 1011-1 (EN 1011-1:2009)', t: 'Spawanie. Zalecenia dotyczące spawania metali. Część 1: Ogólne wytyczne dotyczące spawania łukowego', u: 'Wkład ciepła, współczynniki sprawności cieplnej k', src: 'Katalog EVS: aktualna', url: 'https://evs.ee/en/evs-en-1011-1-2009' },
+  { nr: 'PN-EN 1011-2 (EN 1011-2:2001 +A1:2004)', t: 'Spawanie. Zalecenia… Część 2: Spawanie łukowe stali ferrytycznych', u: 'Podgrzewanie wstępne (metoda B, CET)', src: 'Katalog EVS: potwierdzona', url: 'https://www.evs.ee/en/evs-en-1011-2-2001' },
+  { nr: 'PN-EN ISO 9606-1:2017-10', t: 'Egzaminowanie spawaczy. Spawanie łukowe. Część 1: Stale', u: 'Kwalifikacje spawaczy (jeszcze nie w aplikacji)', src: 'Sklep SAI Global/PKN: aktualna edycja', url: 'https://shop.standards.ie/en-ie/standards/pn-en-iso-9606-1-2017-10-949364_saig_pkn_pkn_2231725' },
+  { nr: 'PN-EN 10253-2', t: 'Kształtki rurowe do spawania doczołowego. Część 2: Stal węglowa i stopowa ferrytyczna ze specjalnymi wymaganiami kontroli', u: 'Kolana w izometrii (dziś wymiary wg ASME B16.9)', src: 'Katalog DIN: aktualna', url: null },
+  { nr: 'PN-EN 10220', t: 'Rury stalowe bez szwu i spawane. Wymiary i masy na jednostkę długości', u: 'Masa i pojemność rury, tabela średnic', src: 'Katalog DIN: aktualna', url: null },
+  { nr: 'PN-EN 1092-1', t: 'Kołnierze i ich połączenia. Kołnierze okrągłe do rur… Część 1: Kołnierze stalowe', u: 'Kołnierze (jeszcze nie w aplikacji)', src: 'Katalog DIN: aktualna (obiegają edycje 2007 i 2018)', url: null },
+  { nr: 'PN-EN 13480-3 (z poprawkami A1–A4)', t: 'Metalowe rurociągi przemysłowe. Część 3: Projektowanie i obliczanie', u: 'Dylatacja, grubość ścianki (jeszcze nie w aplikacji)', src: 'Katalog DIN: aktualna', url: null }
+];
+const NORMY_REFS = { podgrz: ['PN-EN 1011-2'], cieplo: ['PN-EN 1011-1'], masa: ['PN-EN 10220'] };
+const CATS = ['Kolana i przesunięcia', 'Blachy i rozwinięcia', 'Odgałęzienia', 'Przepływ i obciążenia', 'Spawanie', 'Pomiary i konwersje', 'Izometria', 'Normy i źródła'];
 const byId = id => TOOLS.find(t => t.id === id);
 
 // ---------- ekran główny ----------
 function renderHome() {
-  const cnt = TOOLS.filter(t => !t.special).length + 3;
+  const cnt = TOOLS.length - 1;
   $('#app').innerHTML = `<section class="hero"><div><div class="eyebrow">Kalkulator dla rurarza i spawacza</div><h1>DrRobert</h1>
   <p>Odsunięcia, kolana, cięcia, spoiny i izometria. Wyniki co do milimetra, rysowane w skali, na rurze, którą trzymasz w ręku.</p>
   <div class="cta"><button class="btn" data-go="odsun">Wypróbuj kalkulator</button><button class="btn sec" data-go="iso">Edytor izometrii</button></div>
@@ -203,7 +216,8 @@ function updateTool() {
   cur.out = o;
   $('#vis').style.display = o.svg ? '' : 'none'; $('#vis').innerHTML = o.svg || '';
   $('#cards').innerHTML = (o.cards || []).map(([l, v]) => `<div class="cd"><small>${esc(l)}</small><b>${esc(v)}</b></div>`).join('');
-  $('#msg').innerHTML = (o.error ? `<p class="err">${esc(o.error)}</p>` : '') + (o.note ? `<p class="note">${esc(o.note)}</p>` : '') + (o.warn ? `<p class="warn">${esc(o.warn)}</p>` : '');
+  const rf = NORMY_REFS[t.id] ? `<p class="note">Powiązane normy: ${NORMY_REFS[t.id].join(', ')}. Numery potwierdzone w katalogach, treści norm nie sprawdzałem (<a href="#/t/normy" style="color:var(--ac)">szczegóły</a>).</p>` : '';
+  $('#msg').innerHTML = rf + (o.error ? `<p class="err">${esc(o.error)}</p>` : '') + (o.note ? `<p class="note">${esc(o.note)}</p>` : '') + (o.warn ? `<p class="warn">${esc(o.warn)}</p>` : '');
   $('#tbl').innerHTML = o.table ? `<div class="box tw" style="margin-top:14px"><table><tr>${o.table.head.map(h => `<th>${h}</th>`).join('')}</tr>${o.table.rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</table></div>` : '';
   $('#act').innerHTML = o.dxf ? `<button class="btn" id="dxf">Pobierz DXF 1:1</button>` : '';
   if (o.dxf) $('#dxf').onclick = () => download(o.dxf.name, o.dxf.text, 'application/dxf');
@@ -237,8 +251,17 @@ function renderSpecial(t) {
     $('#ca').oninput = () => { const mm = parseInches($('#ca').value); if (!isNaN(mm)) $('#cb').value = mm.toFixed(2); };
     $('#cb').oninput = () => { const mm = parseNum($('#cb').value); if (!isNaN(mm)) $('#ca').value = toFeetInches(mm); };
     try { history.replaceState(null, '', '#/t/cale'); } catch (e) {}
-  } else if (t.special === 'poziomica') renderLevel(t);
+  } else if (t.special === 'normy') renderNormy(t);
+  else if (t.special === 'poziomica') renderLevel(t);
   else if (t.special === 'iso') renderIso(t);
+}
+
+
+function renderNormy(t) {
+  $('#app').innerHTML = `<div class="tool"><button class="hb back" data-go="">← Narzędzia</button><h1>${esc(t.name)}</h1><p class="d">Lista zawiera tylko normy, których numer i status potwierdziłem w katalogach krajowych. <b>Treści tych norm nie widziałem</b>: wzory w aplikacji nie są z nich przepisane i do czasu weryfikacji pozostają orientacyjne. Normy kupuje się w PKN (pkn.pl).</p>
+  <div class="box tw"><table><tr><th>Norma</th><th>Tytuł</th><th>Dotyczy w DrRobert</th><th>Status numeru</th></tr>${NORMY.map(n => `<tr><td style="text-align:left"><b>${esc(n.nr)}</b></td><td style="text-align:left">${esc(n.t)}</td><td style="text-align:left">${esc(n.u)}</td><td style="text-align:left">${n.url ? `<a href="${n.url}" target="_blank" rel="noopener" style="color:var(--ac)">${esc(n.src)}</a>` : esc(n.src)}</td></tr>`).join('')}</table></div>
+  <p class="note">Pozostałe normy (ISO 9692-1, ISO 2553, ISO 5817, ISO 6412, ASME B16.9 i B31.3, DIN 28011/28013) nie są tu wymienione, bo ich numerów i statusu nie udało mi się potwierdzić. Pełna lista z priorytetami jest w pliku docs/normy/normy-do-weryfikacji-drrobert.pdf w repozytorium JARVIS.</p></div>`;
+  try { history.replaceState(null, '', '#/t/normy'); } catch (e) {}
 }
 
 // ---------- router ----------
